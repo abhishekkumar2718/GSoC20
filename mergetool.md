@@ -1,15 +1,3 @@
-Greetings everyone
-
-I am Abhishek Kumar and I want to work on converting mergetool to a builtin as
-my GSoC project. I would love to have your comments on the proposal, the
-approach I have opted for. There are some questions I had while writing the
-proposal after the proposal too.
-
-Thanks
-Abhishek
-
------
-
 # Convert mergetool to builtin
 
 ## Synopsis
@@ -44,8 +32,9 @@ and `git-difftool--helper.sh` and does the following:
 
 ## Goal
 
-At over 1700 lines of code, conversion of the mergetool-related scripts is
+At around 1500 lines of code, conversion of the mergetool-related scripts is
 impossible over a summer of code project.
+[git-mergetool.sh: 529, git-mergetool--lib.sh: 463, mergetools/: 472]
 
 The goal of this project is to rewrite `git-mergetool.sh` in C. Normal merge
 conflicts would still be resolved through `git-mergetool--lib.sh` (a strategy
@@ -80,7 +69,7 @@ improvements for both systems.
 
 Shell scripts often rely on POSIX utilities. They are not necessarily available
 natively on all platforms or might have some differences. On non-POSIX platforms
-(like windows), utilities need to be included along with an emulation layer. C
+(like Windows), utilities need to be included along with an emulation layer. C
 offers improved portability.
 
 ### Conversion of mergetool--lib
@@ -90,6 +79,8 @@ spread over 2-3 SoC or similar projects due to the size of scripts involved.
 Conversion of mergetool would set up most of the plumbing required for
 mergetool--lib and makes the subsequent conversion possible.
 
+> Add justification for mergetool over mergetool--lib
+
 On a broader (_and possibly ambitious_) note, I would be happy to co-mentor
 any student who takes up the conversion process. It would be gratifying to see
 our collective efforts finish a mammoth task.
@@ -97,7 +88,7 @@ our collective efforts finish a mammoth task.
 ## Related Work
 
 Back in 2016, Johannes worked on a remarkably similar "project" - converting
-`git-difftool.sh` into a builtin [3].
+`git-difftool.sh` into a builtin [3]. The conversion is described below.
 
 There have been similar SoC/Outreachy projects converting other scripts:
 - bisect--helper by and Miriam Rubio.
@@ -123,7 +114,7 @@ In a merge conflict, the following files are involved:
 Merge conflicts are of four types - Symbolic link conflict, deleted file
 conflict, submodule conflict, and file conflict.
 
-First three type of conflict occurs when either local or remote is a symlink,
+First three types of conflict occurs when either local or remote is a symlink,
 deleted file or part of a submodule.
 
 Checking out the appropriate version of the file from the index resolves
@@ -156,16 +147,20 @@ conflicts. Mergetool decides the external tool in the following precedence:
 - Configuration
 - Iterating over defaults
 
-`get_merge_tool` decides the external tool. This function is used by
-both mergetool--lib and difftool--helper.
+`get_merge_tool` (defined in mergetool--lib) decides the external tool. This
+function is used by both mergetool and difftool--helper.
 
 The return code of the external tool is usually not trusted. Depending on
 whether we trust return code or not, the script prompts the user to re-affirm
 whether the merge was successful.
 
 The main function of mergetool iterates over the unmerged files (in given order
-if passed) - identifying the type of conflict and calls the appropriate function
+if passed) - identifying the conflict type and calls the appropriate function
 to resolve.
+
+## Conversion of difftool
+
+## Dependency Graphs
 
 ## Plan
 
@@ -332,11 +327,12 @@ I _might_ be worrying over microseconds of performance here ;).
 [Microproject] Consolidate test_cmp_graph logic
 -----
 Log graph comparison logic is duplicated many times. This patch consolidates
-comparision and sanitization logic in lib-log-graph.
+comparison and sanitation logic in lib-log-graph.
 
 Status: Merged
 
 Patch: https://lore.kernel.org/git/20200216134750.18947-1-abhishekkumar8222@gmail.com/
+Commit: https://github.com/git/git/commit/46703057c1a0f85e24c0144b38c226c6a9ccb737
 
 I have also reviewed patches and discussed queries with other contributors:
 - https://lore.kernel.org/git/CAHk66fskrfcJ0YFDhfimVBTJZB4um7r=GdQuM8heJdZtF8D7UQ@mail.gmail.com/
@@ -395,12 +391,3 @@ more and want to give back to the community.
 | Timezone  | UTC+5:30 (IST)                             |
 
 Thank you for taking the time to review my proposal!
------
-
-1. I would be converting around 650 lines. Is the scope of my project adequate?
-
-2. Were the sections of my proposal relevant and helpful?
-
-3. Are there some relevant discussions/resources that I might have missed?
-
-I would be happy to answer any questions or clarifications that you might have.
