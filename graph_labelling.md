@@ -1,75 +1,82 @@
-# Graph labelling for speeding up git commands
+# Compute graph labelling for speeding up git commands
 
 ## Abstract
 
-In graph theory, reachability refers to the ability to get from one vertex to
-another. In an undirected graph, reachablity between all pairs of vertices can be
-determined by identifying the connected components in linear time. The problem is
-significantly harder for directed graphs.
+Git uses various clever methods for making operations on very large repositories
+faster, from bitmap indices for git fetch [1], to generation numbers (also known
+as topological levels) in the commit-graph file for commit graph traversal
+operations like git log --graph [2].
 
-Git represents commits internally as an directed acyclic graph and determining
-reachablity is an important step for many commands. The project precomputes and
-stores reachablity index for commits in commit-graph to speed up git commands.
+However, generation numbers do not always improve performance. Derrick Stolee
+has previously explored alternatives for a better generation number [3].
+Corrected commit date was chosen because of its performance, local
+computablity and backwards compatiblity. Jakub Narebski offered reachablity
+intervals as another alternative for improving performance [4]. 
 
-https://git.github.io/SoC-2020-Ideas/
+This project explores different alternatives and implements the best possible
+choice.
+
+[1]: https://githubengineering.com/counting-objects/
+[2]: https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph-iii-generations/
+[3]: https://public-inbox.org/git/86tvl0zhos.fsf@gmail.com/t/#me61383330fbb4c6b441fdfce6aec1151ecceb687
+[4]: https://git.github.io/SoC-2020-Ideas/
 
 ## Goals
 
 This project aims to:
-- Identify an appropriate reachablity index and algorithm.
+- Explores proposed reachablity interval algorithms.
 - Modify commit-graph format to store reachablity index.
-- Use modified commit-graph to speed up git commands
+- Use modified commit-graph to speed up git commands.
 - If possible, teach git to update indexes without recomputing it from scratch
 and make it compatible with incremental update of commit-graph file.
 
 ## Related Work
 
 This project builds on Derrick and Jakub's terrific work on commit-graph. You
-can read more about it in Derrick's posts [https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph/].
+can read more about it in Derrick's posts [5].
+
+[5]: https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph/
 
 ## Analysis of expected workload
 
-Before we evaluate different reachablity algorithms, we must first understand
-the expected properties of the graph and the queries.
+Before we compare different reachablity algorithms, we must first understand
+the expected properties of the graph and the queries [6].
 
 I have considered the following graph properties:
-1. Number of vertices (measures problem size)
-2. Edge density (measures graph sparseness/denseness)
-3. Maximal path length (upper bound on post(v))
+1. Number of vertices
+2. Edge density
+3. Maximum topological level
+4. R-ratio
+5. Distribution of outgoing degree
 
-| Repository | Number of vertices | Edge density | Maximal path length |
-|------------|--------------------|--------------|-|
-| Linux      | 76,955,655         | 1.081        | |
-| Git        |  5,421,355         | 1.253        | |
-| Rails      |  6,944,095         | 1.224        | |
-| Android    | 49,861,456         | 1.739        | |
-| Swift      |    103,049         | 1.112        | |
+| Repository | Number of vertices | Edge density | Max. topological level | R-ratio | 
+|------------|--------------------|--------------|------------------------|---------|
+| Linux      | 76,955,655         | 1.081        | 19,122                 |
+| Git        |  5,421,355         | 1.253        | 41,382                 |
+| Rails      |  6,944,095         | 1.224        | 12,264                 |
+| Android    | 49,861,456         | 1.739        | 27,473                 |
+| Swift      |    103,049         | 1.112        |  7,476                 |
 
-The outgoing degree measures the upper bound on number of disjoint ranges the
-vertex can reach. It is distributed as follows:
-
-Note: Outgoing degree refers to number of children commits here, which is
-unlike how commits can be traversed but is consistent with conventional
-literature.
-
-| Outgoing degree | Percentage of vertices |
-|-----------------|------------------------|
-| 0               | 90.31%                 |
-| 1               |  7.17%                 |
-| 2               |  1.45%                 |
-| 3               |  0.49%                 |
-| >=4             |  0.58%                 |
+| Outgoing degree | % of Vertices |
+|-----------------|---------------|
+| 1               | 71.12%        |
+| 2               | 28.73%        |
+| 3               | 00.04%        |
+| >=4             | 00.11%        | 
 
 On basis of the above data, we can make the following observations:
 1. The size of problem is of the order of 10^7.
-2. The graphs are sparse, with edge density around or less than 1.25
-[Assuming Android is an outlier].
-3. Order of post(v) is .
-4. Vast majority (99%) of nodes have outgoing degree < 3.
+2. The graphs are sparse, with edge density around or less than 1.25.
+3. Maximum topological level is of order 10^6.
+4. Commit graphs have R-ratio, compared to usual 10^-3 to 10^-4.
+5. Graphs are scale free, with outgoing degree following a very sharp power
+law.
+
+[6]: https://github.com/abhishekkumar2718/GSoC20/repo_analyzer.py
 
 In Git, there are at least four different types of graph traversal queries with
 somewhat different requirements, and affected differently by various reachablity
-indexes [https://public-inbox.org/git/86efc50yq5.fsf@gmail.com/].
+indexes [7].
 
 ### Pure reachability queries
 
@@ -112,12 +119,14 @@ There is also --ancestry-path, which displays commits that exist directly on
 the ancestry chain between B and A. In other words, find all paths from B to A
 if they exist. It's current implementation does not use any reachablity index.
 
+[7]: https://public-inbox.org/git/86efc50yq5.fsf@gmail.com/
+
 ## Comparison of different indexes/algorithms
 
-### One dimension indexes
+### Generation Number v2
 
 Derrick Stolee has previously explored replacing topological levels with a
-better index [1]. The indexes were compared on performance as well as
+better index [8]. The indexes were compared on performance as well as
 following implementation properties:
 
 1. Compatible? - Can this index be used using same logic as minimun generation
@@ -132,18 +141,15 @@ Based on performance, either maximun generation number or corrected commit date
 should be used. Both perform comparably well but have different implementation
 drawbacks.
 
-Maximun generation number is compatible but neither immutable or local.
-Corrected commit date is immutable, local but incompatible.
-
-Overall consensus is that corrected commit date is a better choice since:
+Corrected commit was chosen as generation number v2 because:
 1. Corrected commit date allows for incremental updates, which makes it removes
 redundant work of recomputing index for old commits.
 2. Commit-graph is not widely adopted and backwards compatiblity is not
 important for now.
 
-[1]: https://public-inbox.org/git/86tvl0zhos.fsf@gmail.com/t/#me61383330fbb4c6b441fdfce6aec1151ecceb687
+[8]: https://public-inbox.org/git/86tvl0zhos.fsf@gmail.com/t/#me61383330fbb4c6b441fdfce6aec1151ecceb687
 
-### Post order DFS [2]
+### Min Post Labelling
 
 For each commit 'v', we could store post(v), min_graph(v) which is minimun of 
 post(u) for all commits reachable from 'v' and min_tree(v), which is minimun
@@ -165,13 +171,11 @@ pruning away unreachable paths from the decision space.
 
 Advantages:
 - Simple to implement, review and maintain.
-- Requires 12n bytes of space per node.
-
-[2]: https://git.github.io/SoC-2020-Ideas/
+- Requires 8n bytes of space per node.
 
 #### GRAIL
 
-The key ideas of GRAIL [[3]] are as follows:
+The key ideas of GRAIL [9] are: 
 
 1. For every (complete) subtree of T, the ordered identifiers of the nodes form
 a contigous sequence of integers. Thus, the vertex set can be compactly
@@ -186,7 +190,7 @@ child vertices.
 
 Advantages:
 - Great performance for negative queries.
-- Requires 12n bytes of space per node.
+- Requires 8 bytes of space per node.
 
 Disadvantages:
 - Poor performance for positive queries.
@@ -195,11 +199,11 @@ Taking an idea from FERRARI, if we could store an additional bit indicating
 whether the interval is exact or approximate, the performance for positive
 queries would be improved.
 
-[3]: https://www.vldb.org/pvldb/vldb2010/pvldb_vol3/R24.pdf
+[9]: https://www.vldb.org/pvldb/vldb2010/pvldb_vol3/R24.pdf
 
 #### FERRARI
 
-Instead of one approximate interval as suggested by GRAIL, FERRARI [[4]] stores
+Instead of one approximate interval as suggested by GRAIL, FERRARI [10] stores
 a collection of approximate and exact intervals. This allows FERRARI to
 answer negative queries and many positive queries instantly.
 
@@ -212,14 +216,12 @@ Advantages:
 
 Disadvantages:
 - Requires more preprocessing time than GRAIL.
-- Less than 10% of the nodes require a second interval, wasting large amounts
-of space.
 
-[4]: https://arxiv.org/abs/1211.3375
+[10]: https://arxiv.org/abs/1211.3375
 
 #### PReaCH
 
-PReaCH (Pruned Reachabilty Contraction Heirachies) [[5]] adapts contraction
+PReaCH (Pruned Reachabilty Contraction Heirachies) [11] adapts contraction
 heirarchy speedup techniques for shortest path queries to the reachablity
 setting. It uses three different heuristics - RCH, Pruning based on topological
 levels and Pruning based on DFS number to provide best overall performance.
@@ -243,31 +245,37 @@ Advantages:
 
 Disadvantages:
 - Largest preprocessing time - requires 5 DFS passes.
-- Requires 8m + 64n bytes of space per commit (assuming children edges are
-stored as well).
+- Requires 8m + 64n bytes of space per commit. 
+
+[11]: https://arxiv.org/abs/1404.4465
+
+Note: Jakub once mentioned that PReaCH is not a viable alternative because of
+it's bi-directional nature which I wholeheartedly agree with. It is not
+discussed further in the proposal.
+
+## 
 
 ## Summary
 
-Commit graphs are small to medium sized (compared to problem sizes observed in
-graph theory literature) sparse graphs. They have unusual properties compared
-to a more conventional graph which can be exploited for better performance.
+| Method                | Perf on +ve queries | Perf on -ve queries | Preprocessing time | Additional Space required | Compatible with split-graphs? |
+|-----------------------|---------------------|---------------------|--------------------|---------------------------|-------------------------------|
+| Corrected Commit Date | Poor                | Good                | None               | None                      | Yes                           |
+| Min Post Interval     | Good                | Good                | Minimal            | 8 bytes                   | Yes                           |
+| GRAIL                 | Poor                | Good                | Minimal            | 8 bytes                   | Yes                           |
+| FERRARI               | Good                | Good                | Average            | 9...25 bytes              | Yes                           |
 
-Most of git's reachability queries are negative and using a negative-cut filter
-improves performance more than a postive-cut filter.
-
-Implementing and maintaining a two dimensional reachablity index is hard and
-does not offer significant performance improvements.
-
-We plan to use corrected commit graph as the generation number v2 because it is
-locally computable, immutable and can be incrementally updated.
-
-If git ever considers a two dimensional reachablity index, either post order
-DFS, GRAIL or a index based on commit date would be good starting places to
-discuss.
-
-## Changes to commit-graph file format
+- All proposed methods are backwards incompatible with generation number v1.
 
 ## Plan
+
+1. Community Bonding Period (April 27 - May 18)
+- Implement and benchmark reachablity interval algorithms on git and linux
+kernel repository.
+- 
+
+2. Move generation number to slab (May 19 - )
+
+3. Implement
 
 ## Contributions
 
@@ -293,16 +301,16 @@ and others.
 
 I am Abhishek Kumar, a second-year CSE student at National Institute of
 Technology Karnataka, India. I have a blog where I talk about my interests -
-programming, fiction, and literature [6].
+programming, fiction, and literature [].
 
 I primarily work with C/C++ and Ruby on Rails. I am a member of my institute's
 Open Source Club and student-built University Management System, _IRIS_. I have
 some experience of mentoring - Creating their code style guide and being an
-active reviewer [7].
+active reviewer [].
 
-[6]: https://abhishekkumar2718.github.io/
+[]: https://abhishekkumar2718.github.io/
 
-[7]: https://iris.nitk.ac.in/about_us
+[]: https://iris.nitk.ac.in/about_us
 
 ## Availablity
 
@@ -321,13 +329,13 @@ I would love to keep contributing to git after the GSoC period ends. There's so
 much to learn from the community.
 
 Hannes's comment on checks as a penalty that should be paid only by constant
-strbufs was a perspective I had not considered [8].
+strbufs was a perspective I had not considered [].
 
 Interacting with Kyagi made me rethink the justifications _emphasizing commit
 messages_. I was at my wit's end, which makes me appreciate my patient mentors
 more and want to give back to the community.
 
-[8]: https://lore.kernel.org/git/467c035f-c7cd-01e1-e64c-2c915610de01@kdbg.org/
+[]: https://lore.kernel.org/git/467c035f-c7cd-01e1-e64c-2c915610de01@kdbg.org/
 
 ## Contact Information
 
