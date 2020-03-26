@@ -20,6 +20,8 @@ computability, and backward compatibility.
 
 This project aims to:
 - Move `generation`, `graph_pos` members of struct commit into a commit slab.
+- Examine methods to distinguish commit-graph with legacy generation number and
+generation number v2.
 - Update generation number to v2, modifying all places that reference or
 compute generation numbers.
 - Use generation numbers to speed up implementation of `--ancestry-path` and
@@ -110,8 +112,8 @@ switching commit-graph feature off, as discovered by Ævar Arnfjörð Bjarmason 
 
 ### Corrected Commit Date With Strictly Monotonic Offset
 
-Jakub later proposed a modification to corrected commit date, _Corrected Commit
-Date with Strictly Monotonic Offset_ defined as follows [7]:
+Corrected commit date was later modified to _Corrected Commit Date With
+Strictly Monotonic Offset_, defined as follows [7]:
 
 For a commit C, let its _offset commit date_ (denoted by odate(C))
 be a commit date plus some offset, i.e. odate(C) = date(C) + offset(C),
@@ -139,9 +141,31 @@ A rough implementation by Jakub can be read here [8].
 [7]: https://lore.kernel.org/git/86o8ziatb2.fsf_-_@gmail.com/
 [8]: https://github.com/derrickstolee/git/pull/10
 
+## Distinguishing Generation Numbers
+
+As explained above, commit-graph format version cannot be used to distinguish
+between generation numbers. We want new Git to recognize if commit-graph uses
+generation v1, use those generation numbers correctly and update commit-graph
+file. The solutions suggested are:
+
+- metadata / versioning chunk: Introduce an optional chunk to store generation
+number as metadata and store offsets in CDAT. For a chain of commit-graph files
+with both versions, best choice would be flatten the chain and recompute values
+from scratch.
+
+- new chunk for generation number: Introduce an optional chunk to store the
+offset. Fill in CDAT with either generation zero or compute topological level.
+This removes the restriction of storing generation number in CDAT. However,
+since Git lazily parses commit data, seperating generation number from CDAT
+would increase time spent in I/O.
+
+Metadata chunk seems like the better solution for corrected commit date.
+However, generation number chunk should be revisited if later versions of
+generation numbers require more than 30 bits.
+
 ## Plan
 
-### Community bonding period (April 27 - May 18, 4 weeks)
+### Community bonding period (May 4 - June 1)
 
 1. Extend Stolee`s performance test suite.
 
@@ -175,7 +199,7 @@ operation which could use generation numbers.
 [9]: https://github.blog/2015-09-22-counting-objects/
 [10]: https://lore.kernel.org/git/861s82wdbp.fsf@gmail.com/
 
-### Move `generation`, `graph_pos` into a slab (May 18 - June 8, 3 weeks)
+### Move `generation`, `graph_pos` into a slab (June 1 - June 15, 2 weeks)
 
 struct commit is used in many contexts. However, the struct members
 `generation` and `graph_pos` are only used for commit-graph related operations
@@ -194,9 +218,11 @@ corrected date on initialization.
 
 [11]: https://lore.kernel.org/git/cfa2c367-5cd7-add5-0293-caa75b103f34@gmail.com/
 
-### Implement backward compatible corrected commit date (June 8 - July 20, 6 weeks)
+### Implement backward compatible corrected commit date (June 15 - August 2, 7 weeks)
 
-1. Implement backward compatible corrected commit date (June 8 - June 22, 2 weeks)
+1. Implement metadata chunk (June 15 - June 29, 2 week)
+
+2. Implement backward compatible corrected commit date (June 29 - July 13, 2 weeks)
 
 Topological levels are computed using a DFS in `compute_generation_numbers` of
 commit-graph.c. The condition
@@ -215,9 +241,11 @@ The functions `compare_commits_by_gen_then_commit_date` and
 `compare_commits_by_commit_date` can be replaced by `compare_commits_by_gen` as
 all three *should* return the same order.
 
---> First evaluation (June 15 - June 19)
+--> First evaluation (June 29 - July 3)
 
-2. Update existing references (June 22 - July 20, 4 weeks)
+--> End Semester Exams (June 29 - July 4)
+
+3. Update existing references (July 13 - August 2 , 3 weeks)
 
 The following functions use generation number or committer date for cutoffs:
 - `contains_tag_algo`
@@ -227,11 +255,9 @@ The following functions use generation number or committer date for cutoffs:
 
 All of these can be updated with little to no changes.
 
---> End Semester Exams (June 29 - July 4)
+--> Second evaluation (July 27 - July 31)
 
---> Second evaluation (July 13 - July 17)
-
-### Extend generation number to --ancestry-path (July 20 - August 3, 2 weeks)
+### Extend generation number to --ancestry-path (August 3 - August 16, 2 weeks)
 
 `--ancestry-path A..B` returns the commits that are both descendants of A and
 ancestors of B. The algorithm computes commits that are reachable by B but not
@@ -241,7 +267,7 @@ We can use generation number to limit walks to find commits reachable by B.
 
 [12]: https://lore.kernel.org/git/0c6b42e4-e825-ff70-a528-e118abf4c435@gmail.com/
 
-### Examine performance improvements (August 3 - August 10, 1 week)
+### Examine performance improvements (August 17 - August 24, 1 week)
 
 - Compare the performance of generation number v2 versus topological level using
   performance test suite.
@@ -300,16 +326,16 @@ active reviewer [15].
 
 ## Availablity
 
-The official GSoC coding period runs from April 27 to August 17.
+The official GSoC coding period runs from June 1 to August 24.
 
 Due to the outbreak of COVID-19 in my country, my college has pre-emptively
 announced summer vacations from March 17 to June 1. Unfortunately,
 I would have classes for a large part of the coding period. However, I can still
 contribute 35-40 hours every week due to a low course load (~20 hours a week).
 
-I would not be able to contribute from June 29 to July 4 due to end semester exams.
-It would be easily compensated during the subsequent week "semester break" from
-July 5 to July 27.
+I would not be able to contribute from June 29 to July 4 due to end semester
+exams.  It would be easily compensated during the subsequent "semester break"
+from July 5 to July 27.
 
 ## Contact Information
 
