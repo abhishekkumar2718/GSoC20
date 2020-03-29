@@ -1,5 +1,9 @@
 # Implement Generation Number v2
 
+> This proposal has been autoconverted to PDF. Refer to original mailing list
+> discussion [here](https://lore.kernel.org/git/20200326101520.GA19326@Abhishek-Arch/).
+> You can also read this proposal on [Github](https://github.com/abhishekkumar2718/GSoC20/blob/master/generation_number_v2.md).
+
 ## Abstract
 
 Git uses various clever methods for making operations on very large repositories

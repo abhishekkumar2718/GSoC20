@@ -1,5 +1,9 @@
 # Convert mergetool to builtin
 
+> This proposal has been autoconverted to PDF. Refer to original mailing list
+> discussion [here](https://lore.kernel.org/git/20200325170023.GA115466@Abhishek-Arch/).
+> You can also read this proposal on [Github](https://github.com/abhishekkumar2718/GSoC20/blob/master/mergetool.md).
+
 ## Synopsis
 
 A few subcommands of git are in the form of shell and Perl scripts. This causes
