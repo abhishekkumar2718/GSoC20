@@ -26,7 +26,9 @@ This patch series implements the corrected commit date offsets as generation num
 
 Git uses topological levels in the commit-graph file for commit-graph traversal operations like git log --graph. Unfortunately, using topological levels can result in a worse performance than without them when compared with committer date as a heuristics. For example, git merge-base v4.8 v4.9 on the Linux repository walks 635,579 commits using topological levels and walks 167,468 using committer date.
 
-Thus, the need for generation number v2 was born. New generation number needed to provide good performance, increment updates, and backward compatibility. Due to an unfortunate problem 1, we also needed a way to distinguish between the old and new generation number without incrementing graph version.
+Thus, the need for generation number v2 was born. New generation number needed to provide good performance, increment updates, and backward compatibility. Due to an unfortunate problem [1], we also needed a way to distinguish between the old and new generation number without incrementing graph version.
+
+[1]: https://public-inbox.org/git/87a7gdspo4.fsf@evledraar.gmail.com/
 
 Various candidates were examined (https://github.com/derrickstolee/gen-test, abhishekkumar2718#1). The proposed generation number v2, Corrected Commit Date with Mononotically Increasing Offsets performed much worse than committer date (506,577 vs. 167,468 commits walked for git merge-base v4.8 v4.9) and was dropped.
 
@@ -48,9 +50,9 @@ If the topmost split commit-graph file does not have a GDAT chunk (meaning it ha
 
 [Link to mailing list discussion](https://lore.kernel.org/git/pull.676.v2.git.1596941624.gitgitgadget@gmail.com/T/#meefa4ee2a1cfab06fe760e1a9e596a2dc8acdef8)
 
-## Performance of Metadata, Generation Data
+### Performance of Metadata, Generation Data
 
-As old versions of Git can `die()` when they encounter a commit graph with different graph version, our implementation of generation number v2 has to be backwards compatible.
+As old versions of Git can `die()` when they encounter a commit graph with different graph version, our implementation of generation number v2 has to be backwards compatible. I wrote up an investigatory report comparing different possible approaches, following [Generation Number v2], a similar report by Dr. Stolee.
 
 The following approaches were implemented:
 
@@ -71,7 +73,7 @@ We also considered two possible definitions for generation number v2:
 
 However, it was found that generation number v5 did not perform as well as generation number v2 and was eventually scrapped. We chose to implement Corrected Committer Date using Generation Data chunk.
 
-### Move generation, graph position into commit-slab
+### Move generation, graph position into commit-slab (merged)
 
 The struct commit is used in many contexts. However, members
 `generation` and `graph_pos` are only used for commit graph related
@@ -93,7 +95,7 @@ follow-up in a later series.
 
 [Link to mailing list discussion](https://lore.kernel.org/git/20200604072759.19142-1-abhishekkumar8222@gmail.com/)
 
-#### Consolidate test_cmp_graph_logic (Microproject)
+### Consolidate test_cmp_graph_logic (Microproject, merged)
 
 Log graph comparision logic is duplicated many times in:
 - t3430-rebase-merges.sh
